@@ -3,6 +3,8 @@
 #include "MainGame.hpp"
 #include "AudioEngine.h"
 #include "Definitions.h"
+#include "2d/CCRenderTexture.h"
+#include "TextureBlur.h"
 
 
 //using namespace ui;
@@ -37,13 +39,16 @@ bool MainGame::init()
     auto visibleSize = Director::getInstance()->getVisibleSize();                                //! Для расстановки изображений
     Vec2 origin = Director::getInstance()->getVisibleOrigin();
     
-    auto background = Sprite::create("bg.png");																//! Добавляем фон
+    Size screenSize = Director::getInstance()->getWinSize();
+    
+    background = Sprite::create("bg.png");																//! Добавляем фон
     meat = MenuItemImage::create("meat.png","meat.png", CC_CALLBACK_1(MainGame::Points,this));   //! Это должен быть кусок мяса ;
     men2 = Sprite::create("menturning.png");
     auto plate = Sprite::create("plate.png");
-    auto table = Sprite::create("table2.png");
+    auto table = Sprite::create("table.png");
     
     
+
     
     men2->setSpriteFrame(SpriteFrame::create("menturning.png", Rect(0, 0, 100, 300)));
     
@@ -72,7 +77,7 @@ bool MainGame::init()
     
     TapLabelAnimation();  //! запускаем анимацию (Вызываем функцию 1 раз)
     //!!!!! Создаём анимацию надписи "Tap To Play!"
-
+    
     
     
     //!!!!! Создаем TouchEvent - при нажатии по экрану - игра запускается
@@ -113,7 +118,7 @@ bool MainGame::init()
 
 void MainGame::TapLabelAnimation()            //! Запускаем зацикленную анимацию надписи "Tap To Play!"
 {
-   scoreLabel->runAction(repeatTapLabel);
+    scoreLabel->runAction(repeatTapLabel);
 }
 
 
@@ -128,6 +133,7 @@ bool MainGame::onCantactBegin(cocos2d::Touch *touch)      //! Запускаем
     
     MainGame::PauseButtonCreate();				// Создание кнопки паузы
     MainGame::schedule(schedule_selector(MainGame::MenWatch), 6);				// Запускает врага
+    
     return true;
 }
 
@@ -145,7 +151,6 @@ void MainGame::PauseButtonCreate()        //! Создаём и добавляе
     
     auto &buttonpause = button;			// Создаём ссылку для лямбда функции
     
-    MainGame::addChild(button, 6);		// Добавляем кнопку паузы на экран
     
     button->addTouchEventListener([&, buttonpause](Ref* sender, cocos2d::ui::Widget::TouchEventType type)                //! Функционал кнопки паузы
                                   {
@@ -170,11 +175,11 @@ void MainGame::PauseButtonCreate()        //! Создаём и добавляе
                                               scoreLabel->setOpacity(0);
                                               
                                               log("TAP ENDED BUTTON PAUSE");
-                                              MainGame::removeChild(buttonpause, true);   // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
+                                              MainGame::PauseGame();
                                               MainGame::PauseMenuCreate();    //? Тут ошибка - создаю одно и тоже дохера раз похоже      - но так как функция локальная всё ок
                                               //? Игра должна ставить на паузу
-                                              MainGame::setpausebg();  ///Декоративная чушь чисто
-                                              
+
+                                              MainGame::removeChild(buttonpause, true);   // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
                                               break;
                                               
                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
@@ -186,6 +191,7 @@ void MainGame::PauseButtonCreate()        //! Создаём и добавляе
                                       
                                   });
     
+     MainGame::addChild(button, 12);		// Добавляем кнопку паузы на экран
 }
 
 void MainGame::CreditMenuCreate()
@@ -243,7 +249,6 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     
     // Создаём все кнопки
     auto resume = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
-    auto info = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
     auto sfx = cocos2d::ui::CheckBox::create("SFXON.png",
                                              "SFXTAP.png",
                                              "SFXOFF.png",
@@ -253,27 +258,22 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     
     // Создаём ссылки для лямбдо функции
     auto &sfxlink = sfx;
-    auto &infolink = info;
     auto &resumelink = resume;
     
     // Устанавливаем позиции и размер
-    sfx->setPosition(Point(visibleSize.width / 2 + origin.x + 50, visibleSize.height / 2 + origin.y + 140));
+    sfx->setPosition(Point(visibleSize.width / 2 + origin.x + 50, visibleSize.height / 2 + origin.y + 120));
     sfx->setScale(1.00);
     
-    info->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 100));
-    info->setScale(0.75);
-    
-    resume->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y + 100));
+    resume->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y ));
     resume->setScale(0.75);
     
     // Добавляем на экран все кнопки
     this->addChild(sfx, 12);
-    this->addChild(info, 12);
     this->addChild(resume, 12);
     
     
     
-    resume->addTouchEventListener([&, resumelink, infolink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "продолжить"
+    resume->addTouchEventListener([&, resumelink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "продолжить"
                                   {
                                       switch (type)
                                       {
@@ -285,14 +285,14 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
                                           case cocos2d::ui::Widget::TouchEventType::ENDED:
                                               log("TAP ENDED BUTTON PLAY");
                                               MainGame::removeChild(resumelink, true);
-                                              MainGame::removeChild(infolink, true);
                                               MainGame::removeChild(sfxlink, true);
-                                              MainGame::removeChild(pausebg, true);
+                                           //   MainGame::removeChild(pausebg, true);           ОШИБКА БАГ ТЫ ПИДОР ПЕТЯ
                                               //? Продолжить игру здесь надо
                                               menu->setEnabled(true);						// Включаем возможность "есть" мясо
                                               scoreLabel->setOpacity(255);
                                               PauseButtonCreate();					//  Создаём кнопку паузы
                                               men2->resume();
+                                              MainGame::PauseGame();
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
                                               break;
@@ -302,33 +302,6 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
                                       
                                   });
     
-    
-    info->addTouchEventListener([&, resumelink, infolink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "титры"
-                                {
-                                    switch (type)
-                                    {
-                                        case cocos2d::ui::Widget::TouchEventType::BEGAN:
-                                            log("TAP BEGAN CREDITS");
-                                            break;
-                                        case cocos2d::ui::Widget::TouchEventType::MOVED:
-                                            break;
-                                        case cocos2d::ui::Widget::TouchEventType::ENDED:
-                                            log("TAP ENDED BUTTON");
-                                            MainGame::removeChild(resumelink, true);
-                                            MainGame::removeChild(infolink, true);
-                                            MainGame::removeChild(sfxlink, true);
-                                            MainGame::removeChild(pausebg, true);
-                                            CreditMenuCreate();
-                                            
-                                            
-                                            break;
-                                        case cocos2d::ui::Widget::TouchEventType::CANCELED:
-                                            break;
-                                        default:
-                                            break;
-                                    }
-                                    
-                                });
     
     
     
@@ -370,18 +343,43 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     
 }
 
-void MainGame::PauseGame(cocos2d::Ref *sender)   //? Размытие по Гауссу и пауза ( но мб это объеденю в одну функцию )
+void MainGame::PauseGame()   //? Размытие по Гауссу и пауза ( но мб это объеденю в одну функцию )
 {
     if (gameplaying)
     {
-        Director::getInstance()->pause();
+       // Director::getInstance()->pause();
         gameplaying = false;
+        
+        auto visibleSize = Director::getInstance()->getVisibleSize();                                //! Для расстановки изображений
+        Vec2 origin = Director::getInstance()->getVisibleOrigin();
+
+        Size screenSize = Director::getInstance()->getWinSize();
+        
+        float scale = 8.0f;
+        
+         auto image = Sprite::create("bg.png");
+         image->retain();
+         image->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
+         
+         
+         TextureBlur::initShader(screenSize / 1.0f);
+         auto texture = TextureBlur::create(image->getTexture(), 1.1f, 1);
+         auto sprite = Sprite::createWithTexture(texture);
+         sprite->getTexture()->setAntiAliasTexParameters();
+         sprite->setPosition(Point(visibleSize.width / 2 + origin.x + 100, visibleSize.height / 2 + origin.y));
+         sprite->setScale(1.0f);
+         sprite->setFlippedY(false);
+         pausebg = sprite;
+         addChild(pausebg, 7);
+ 
     }
     else
     {
-        Director::getInstance()->resume();
+       // Director::getInstance()->resume();
         gameplaying = true;
+        removeChild(pausebg, true);
     }
+  
 }
 
 void MainGame::Points(cocos2d::Ref *sender) //! Должен считать результат, уменьшать мясо, и проверять не проиграл ли игрок
@@ -412,6 +410,7 @@ void MainGame::Points(cocos2d::Ref *sender) //! Должен считать ре
         auto scene = GameOver::createScene();
         Director::getInstance()->replaceScene(TransitionFade::create(TRANSITION_TIME, scene));
     }
+  
 }
 
 void MainGame::MenWatch(float dt)  //! Должен генерировать поведение противника
@@ -461,18 +460,3 @@ void MainGame::MenWatch(float dt)  //! Должен генерировать п�
     
 }
 
-void MainGame::setpausebg()			// Декорация 
-{
-    auto visibleSize = Director::getInstance()->getVisibleSize();	
-    Vec2 origin = Director::getInstance()->getVisibleOrigin();
-    
-    
-    pausebg = Sprite::create("PauseBG.png");
-    
-    pausebg->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y + 20));
-    pausebg->setOpacity(155);
-    
-    this->addChild(pausebg, 8);
-    
-    
-}
