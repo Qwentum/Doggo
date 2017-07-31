@@ -1,0 +1,31 @@
+auto info = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
+auto &infolink = info;
+info->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 100));
+    info->setScale(0.75);
+    
+ info->addTouchEventListener([&, resumelink, infolink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "титры"
+                                {
+                                    switch (type)
+                                    {
+                                        case cocos2d::ui::Widget::TouchEventType::BEGAN:
+                                            log("TAP BEGAN CREDITS");
+                                            break;
+                                        case cocos2d::ui::Widget::TouchEventType::MOVED:
+                                            break;
+                                        case cocos2d::ui::Widget::TouchEventType::ENDED:
+                                            log("TAP ENDED BUTTON");
+                                            MainGame::removeChild(resumelink, true);
+                                            MainGame::removeChild(infolink, true);
+                                            MainGame::removeChild(sfxlink, true);
+                                            MainGame::removeChild(pausebg, true);
+                                            CreditMenuCreate();
+                                            
+                                            
+                                            break;
+                                        case cocos2d::ui::Widget::TouchEventType::CANCELED:
+                                            break;
+                                        default:
+                                            break;
+                                    }
+                                    
+                                });
