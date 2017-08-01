@@ -76,7 +76,7 @@ bool MainGame::init()
 
 	TapLabelAnimation();  //! запускаем анимацию (Вызываем функцию 1 раз)
 	//! Создаём анимацию надписи "Tap To Play!"
-
+	
 
 	
 	//! Создаем TouchEvent - при нажатии по экрану - игра запускается 
@@ -240,8 +240,7 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
 
 
 	// Создаём все кнопки
-	auto resume = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
-	auto info = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
+	auto resume = cocos2d::ui::Button::create("play.png", "play.png", "play.png");
 	auto sfx = cocos2d::ui::CheckBox::create("SFXON.png",
 		"SFXTAP.png",
 		"SFXOFF.png",
@@ -251,27 +250,22 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
 
 	// Создаём ссылки для лямбдо функции
 	auto &sfxlink = sfx;
-	auto &infolink = info;
 	auto &resumelink = resume;
 
 	// Устанавливаем позиции и размер
 	sfx->setPosition(Point(visibleSize.width / 2 + origin.x + 280, visibleSize.height / 2 + origin.y + 420));
 	sfx->setScale(1.00);
 
-	info->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y + 200));
-	info->setScale(0.75);
-
-	resume->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y + 400));
+	resume->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
 	resume->setScale(0.75);
 
 	// Добавляем на экран все кнопки
 	this->addChild(sfx, 12);
-	this->addChild(info, 12);
 	this->addChild(resume, 12);
 
 
 
-	resume->addTouchEventListener([&, resumelink, infolink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "продолжить"
+	resume->addTouchEventListener([&, resumelink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "продолжить"
 	{
 		switch (type)
 		{
@@ -283,7 +277,6 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
 		case cocos2d::ui::Widget::TouchEventType::ENDED:
 			log("TAP ENDED BUTTON PLAY");
 			MainGame::removeChild(resumelink, true);
-			MainGame::removeChild(infolink, true);
 			MainGame::removeChild(sfxlink, true);
 			MainGame::removeChild(pausebg, true);
 															//? Продолжить игру здесь надо
@@ -299,33 +292,6 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
 
 	});
 
-	
-	info->addTouchEventListener([&, resumelink, infolink, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "титры"
-	{
-		switch (type)
-		{
-		case cocos2d::ui::Widget::TouchEventType::BEGAN:
-			log("TAP BEGAN CREDITS");
-			break;
-		case cocos2d::ui::Widget::TouchEventType::MOVED:
-			break;
-		case cocos2d::ui::Widget::TouchEventType::ENDED:
-			log("TAP ENDED BUTTON");
-			MainGame::removeChild(resumelink, true);
-			MainGame::removeChild(infolink, true);
-			MainGame::removeChild(sfxlink, true);
-			MainGame::removeChild(pausebg, true);
-			CreditMenuCreate();
-
-			
-			break;
-		case cocos2d::ui::Widget::TouchEventType::CANCELED:
-			break;
-		default:
-			break;
-		}
-
-	});
 
 	
 	if (sfxOn == false)				///Графически настраиваем вид кнопки
@@ -470,3 +436,9 @@ void MainGame::setpausebg()			// Декорация
 
 
 }
+
+
+
+
+ 
+
