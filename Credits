@@ -29,3 +29,49 @@ info->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2
                                     }
                                     
                                 });
+                                
+void MainGame::CreditMenuCreate()
+{
+    auto visibleSize = Director::getInstance()->getVisibleSize();        //? Мб добавить их в хедер раз они везде юзаются????
+    Vec2 origin = Director::getInstance()->getVisibleOrigin();
+    
+    auto credit = cocos2d::ui::Button::create("t-1.png", "t-1.png", "t-1.png");  ////
+    credit->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));									  //  Создаём кнопку меню титров
+    credit->setScale(0.75);																															 ////
+    
+    
+    auto &creditlink = credit;			// Создаём ссылку для лямбда функции
+    
+    MainGame::addChild(credit, 6);		// Добавляем кнопку паузы на экран
+    
+    credit->addTouchEventListener([&, creditlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)                //! Функционал меню титров
+                                  {
+                                      switch (type)
+                                      {
+                                          case cocos2d::ui::Widget::TouchEventType::BEGAN:
+                                              log("Credit Tap Statred");
+                                              break;
+                                          case cocos2d::ui::Widget::TouchEventType::MOVED:
+                                              break;
+                                              
+                                          case cocos2d::ui::Widget::TouchEventType::ENDED:
+                                              log("Credit Tap Ended");
+                                              MainGame::removeChild(creditlink, true);   // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
+                                              MainGame::PauseMenuCreate();    //? Тут ошибка - создаю одно и тоже дохера раз похоже      - но так как функция локальная всё ок
+                                              //? Игра должна ставить на паузу
+                                              
+                                              break;
+                                              
+                                          case cocos2d::ui::Widget::TouchEventType::CANCELED:
+                                              break;
+                                              
+                                          default:
+                                              break;
+                                      }
+                                      
+                                  });
+    
+    
+    
+    
+}
