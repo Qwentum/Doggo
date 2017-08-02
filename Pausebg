@@ -1,0 +1,25 @@
+////// Каждый элемент геймплея должен быть в MainGame.hpp - после чего его текущая текстура должна быть взята и retain(); visit();
+	???? retain() - необязателен?	
+    
+    
+    
+    
+  	auto rendert = RenderTexture::create(screenSize.width, screenSize.height);
+		rendert->retain();
+		rendert->begin();
+		background->visit();
+		men2->visit();
+		table->visit();
+		plate->visit();
+		menu->visit();
+		rendert->end();
+
+		TextureBlur::initShader(screenSize / 1.0f);
+		auto texture = TextureBlur::create(rendert->getSprite()->getTexture() , 1.1f, 1);
+		auto bluredbg = Sprite::createWithTexture(texture);
+		bluredbg->getTexture()->setAntiAliasTexParameters();
+		bluredbg->setPosition(Point(visibleSize.width / 2, visibleSize.height / 2));
+		bluredbg->setScale(1.0f);
+		bluredbg->setFlippedY(true);
+		pausebg = bluredbg;
+		addChild(pausebg, 7);
