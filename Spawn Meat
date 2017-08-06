@@ -1,0 +1,36 @@
+
+	//!!!!!!! Создаем TouchEvent - при MoveTo ( в любой части экрана ) убираем старую тарелку, спавним мясо 
+	platemoveevent = EventListenerTouchOneByOne::create();
+	platemoveevent->setSwallowTouches(true);
+	platemoveevent->setEnabled(false);
+	platemoveevent->onTouchBegan = [](Touch* touch, Event* event) 
+	{
+		return true; 
+	};
+	platemoveevent->onTouchMoved = CC_CALLBACK_1(MainGame::spawnmeat, this);
+	_eventDispatcher->addEventListenerWithSceneGraphPriority(platemoveevent, plate);
+	//!!!!!!! Создаем TouchEvent - при MoveTo ( в любой части экрана ) убираем старую тарелку, спавним мясо 
+  
+  
+  
+  bool MainGame::spawnmeat(cocos2d::Touch *touch)
+{
+	auto visibleSize = Director::getInstance()->getVisibleSize();                                //! Для расстановки изображений
+	Vec2 origin = Director::getInstance()->getVisibleOrigin();
+
+
+
+	auto RemovePlate = MoveTo::create(1.0f, Vec2(plate->getPositionX() * -1.25f, plate->getPositionY()));
+	auto TeleoprtPlate = MoveTo::create(0.0f, Point((visibleSize.width / 2 + origin.x) * 2.5f, visibleSize.height / 2 + origin.y));
+	auto SetLocationPlate = MoveTo::create(0.5f, Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 290));
+	auto SetLocationMeat = MoveTo::create(0.5f, Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 270));
+	auto delay = DelayTime::create(1.0f);
+	menu->setPosition(Point((visibleSize.width / 2 + origin.x) * 2.5f, visibleSize.height / 2 + origin.y));
+	meat->setScale(1.0f);
+	plate->runAction(Sequence::create(RemovePlate, TeleoprtPlate, SetLocationPlate, nullptr));
+	menu->runAction(Sequence::create(delay, SetLocationMeat, nullptr));
+
+	platemoveevent->setEnabled(false);
+	return true;
+
+}
