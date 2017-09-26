@@ -1,13 +1,11 @@
 #include "ui/CocosGUI.h"
-#include "GameOverScene.hpp"
 #include "MainGame.hpp"
-#include "AudioEngine.h"
+#include "SimpleAudioEngine.h"
 #include "Definitions.h"
 #include "2d/CCRenderTexture.h"
 #include "TextureBlur.h"
 
 
-//using namespace ui;
 USING_NS_CC;
 
 
@@ -36,35 +34,52 @@ bool MainGame::init()
         return false;
     }
     
-    auto visibleSize = Director::getInstance()->getVisibleSize();                                //! Для расстановки изображений
-    Vec2 origin = Director::getInstance()->getVisibleOrigin();
+    def = UserDefault::getInstance();
+    sfxSet = def->getBoolForKey("SFX", true);
     
-    Size screenSize = Director::getInstance()->getWinSize();
     
-    background = Sprite::create("bg.png");																//! Добавляем фон
-    meat = MenuItemImage::create("meat.png","meat.png", CC_CALLBACK_1(MainGame::Points,this));   //! Это должен быть кусок мяса ;
-    men2 = Sprite::create("menturning.png");
-    auto plate = Sprite::create("plate.png");
-    auto table = Sprite::create("table.png");
+    CocosDenshion::SimpleAudioEngine::getInstance()->playBackgroundMusic("BirdSingingSFX.mp3");  // Включаем звук птиц
+    CocosDenshion::SimpleAudioEngine::getInstance()->setBackgroundMusicVolume(0.65f);
+    CocosDenshion::SimpleAudioEngine::getInstance()->setEffectsVolume(0.75f);
+    
+    if (!sfxSet)
+    {
+        CocosDenshion::SimpleAudioEngine::getInstance()->pauseBackgroundMusic();
+        CCLOG("PAUSE ALL AUDIO");
+    }
+
+    
+    
+    
+    gril = Sprite::create("gril.png");
+    background = Sprite::create("bg.png");																//! Создаём фон
+    man = Sprite::create("1.4.png");
+    plate = Sprite::create("plate.png");
+    table = Sprite::create("table.png");
+    meat = Sprite::create("meat.png");
+    clouds = Node::create();
+   
+    GenMeatTex();
+    
+    
+    smoke = ParticleSystemQuad::create("smoke.plist");
+    smoke->setScale(0.20f);
+    smoke->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 1.25));
+    smoke->setOpacity(55);
+    MainGame::addChild(smoke, 2);
     
     
 
+
     
-    men2->setSpriteFrame(SpriteFrame::create("menturning.png", Rect(0, 0, 100, 300)));
+    man->setSpriteFrame(SpriteFrame::create("1.4.png", Rect(0, 0, 115, 300)));
     
-    menu = Menu::create(meat, NULL);                      //? Переделать потом - пока так
-    menu->setEnabled(false);								  //
     
     score = 0;   //! Устанавливаем счет
     
-    __String *tempScore = __String::createWithFormat("TAP TO PLAY!");   //! Создаём надпись "Tap To Play!"
-    
+    __String *tempScore = __String::createWithFormat("TAP TO PLAY!");       //! Создаём надпись "Tap To Play!"
     scoreLabel = Label::createWithTTF(tempScore->getCString(), "fonts/Archive.otf", visibleSize.height * SCORE_FONT_SIZE);
-    
-    MenRed = SpriteFrame::create("men2.png", Rect(0, 0, 300, 800));
-    
-    
-    cocos2d::experimental::AudioEngine::play2d("BirdSingingSFX.mp3", true, 1.0f);
+    scoreLabel->setColor(Color3B::BLACK);
     
     
     //!!!!! Создаём анимацию надписи "Tap To Play!"
@@ -74,65 +89,123 @@ bool MainGame::init()
     auto TapLabelSequence = Sequence::create(TapLabelFadeOut, DelayTapToPlay,TapLabelFadeIn, nullptr);    //! Создаём сиквенцию с нашими действиями, "анимацию"
     
     repeatTapLabel = RepeatForever::create(TapLabelSequence);     //! Зацикливаем "анимацию" надписи
-    
-    TapLabelAnimation();  //! запускаем анимацию (Вызываем функцию 1 раз)
+    scoreLabel->runAction(repeatTapLabel);
     //!!!!! Создаём анимацию надписи "Tap To Play!"
     
     
     
     //!!!!! Создаем TouchEvent - при нажатии по экрану - игра запускается
-    contactListener = EventListenerTouchOneByOne::create();
-    contactListener->setSwallowTouches(true);
-    contactListener->setEnabled(true);
+    contactListener = EventListenerTouchOneByOne::create();             //?????
+    contactListener->setSwallowTouches(true);                           //??????
+    contactListener->setEnabled(true);                                  //???????
     contactListener->onTouchBegan = CC_CALLBACK_1(MainGame::onCantactBegin, this);   //! Должен отключить возможность нажатия после запуска функции "onCantactBegin"
-    Director::getInstance()->getEventDispatcher()->addEventListenerWithSceneGraphPriority(contactListener, this);
+    Director::getInstance()->getEventDispatcher()->addEventListenerWithSceneGraphPriority(contactListener, this);           //????????
     //!!!!! Создаем TouchEvent - при нажатии по экрану - игра запускается
     
     
-    scoreLabel->setColor(Color3B::BLACK);
+    //!!!!! Создаем TouchEvent - при нажатии едим мясо и добавляем Points
+    meatmovement = EventListenerTouchOneByOne::create();             //?????
+    meatmovement->setSwallowTouches(true);                           //??????
+    meatmovement->setEnabled(false);                                  //???????
+    meatmovement->onTouchBegan = [&](cocos2d::Touch* touch, cocos2d::Event* event) //! Добавляем очков при нажатии на мясо
+    {
+        cocos2d::Vec2 p = touch->getLocation();
+        cocos2d::Rect rect = meat->getBoundingBox();
+        
+        if(rect.containsPoint(p))
+        {
+            MainGame::Points();
+            return true;
+        }
+        
+        return false;
+    };
+    Director::getInstance()->getEventDispatcher()->addEventListenerWithSceneGraphPriority(meatmovement, meat);           //????????
+    //!!!!! Создаем TouchEvent - при нажатии едим мясо и добавляем Points
     
+    
+    
+    //!!!!!!! Создаем TouchEvent - при MoveTo ( в любой части экрана ) убираем старую тарелку, спавним мясо
+    platemovement = EventListenerTouchOneByOne::create();
+    platemovement->setSwallowTouches(true);
+    platemovement->setEnabled(false);
+    platemovement->onTouchBegan = [&](Touch* touch, Event* event)
+    {
+        return true;
+    };
+    platemovement->onTouchMoved = [&](cocos2d::Touch* touch, cocos2d::Event* event) //! Добавляем очков при нажатии на мясо
+    {
+        cocos2d::Vec2 p2 = touch->getLocation();
+        cocos2d::Rect rect = plate->getBoundingBox();
+        Size sz = Director::getInstance()->getWinSize();
+        CCLOG("%f", touch->getDelta().x);
+        
+        if(rect.containsPoint(p2))
+        {
+            if(touch->getDelta().x * -1 > 8)
+            {
+                MainGame::SpawnMeat();
+                return true;
+            }
+        }
+        return false;
+    };
+    _eventDispatcher->addEventListenerWithSceneGraphPriority(platemovement, plate);
+    //!!!!!!! Создаем TouchEvent - при MoveTo ( в любой части экрана ) убираем старую тарелку, спавним мясо
+    
+    
+    gril->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.85f));
     scoreLabel->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.75f + origin.y));
     background->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
-    menu->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 80));
-    table->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 100));
-    men2->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
+    meat->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.48f));
+    table->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.30f));
+    man->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 1.10f ));
     plate->setScale(0.65f);
-    plate->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y - 80));
+    plate->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.45f));
+
     
-    meat->setScale(0.75f);
+    
+    meat->setScale(0.65f);
     table->setScale(0.75f);
     background->setScale(0.75f);
+    man->setScale(0.75f);
+    gril->setScale(0.75f);
     
-    MainGame::addChild(scoreLabel, 5);
+    
+    MainGame::addChild(gril,2);
     MainGame::addChild(background,1);
+    MainGame::addChild(clouds,2);
+    MainGame::addChild(man, 3);
     MainGame::addChild(table, 4);
-    MainGame::addChild(menu, 6);
-    MainGame::addChild(men2, 3);
+    MainGame::addChild(scoreLabel, 7);
     MainGame::addChild(plate, 5);
+    MainGame::addChild(meat, 6);
+
+    MainGame::scheduleUpdate();                 //???????????
     
-    MainGame::scheduleUpdate();
+    MainGame::schedule(schedule_selector(MainGame::SpwanCloud), 8.0f);
     
     return true;
 }
 //! Разoрбраться с -> ::  .
 
-void MainGame::TapLabelAnimation()            //! Запускаем зацикленную анимацию надписи "Tap To Play!"
-{
-    scoreLabel->runAction(repeatTapLabel);
-}
-
 
 bool MainGame::onCantactBegin(cocos2d::Touch *touch)      //! Запускаем игру после нажатия по экрану
 {
+    
     stopAction(repeatTapLabel);								//! Выключаем зацикленную анимацию надписи "Tap to play!"
     scoreLabel->setOpacity(255);							  // Устанавливаем прозрачность счетчика очков на 255
     scoreLabel->setString("0");								  // Устанавливаем счет на 0
+    scoreLabel->setPosition(Point((visibleSize.width / 2 + origin.x) * 0.75f, (visibleSize.height / 2  + origin.y) * 1.75f));
+
     
     contactListener->setEnabled(false);					//! Запрещаем принимать "все" нажатия по экрану
-    menu->setEnabled(true);       //? Включаем стол
+    meatmovement->setEnabled(true);      // Разрешаем тапать на мясо
+    
     
     MainGame::PauseButtonCreate();				// Создание кнопки паузы
-    MainGame::schedule(schedule_selector(MainGame::MenWatch), 6);				// Запускает врага
+    MainGame::schedule(schedule_selector(MainGame::ManWatch), 6);				// Запускает врага
+    
     
     return true;
 }
@@ -141,45 +214,39 @@ bool MainGame::onCantactBegin(cocos2d::Touch *touch)      //! Запускаем
 void MainGame::PauseButtonCreate()        //! Создаём и добавляем на экран кнопку паузы
 {
     
-    auto visibleSize = Director::getInstance()->getVisibleSize();        //? Мб добавить их в хедер раз они везде юзаются????
-    Vec2 origin = Director::getInstance()->getVisibleOrigin();
-    
     auto button = cocos2d::ui::Button::create("GUI_button_pause_orange.png", "GUI_button_pause_orange-dark.png", "GUI_button_pause_orange-dark.png");  ////
-    button->setPosition(Point(visibleSize.width / 2 + origin.x + 50, visibleSize.height / 2 + origin.y + 100));									  //  Создаём кнопку паузы и задаём ей параметры
-    button->setScale(0.75f);																															 ////
+    button->setPosition(Point((visibleSize.width / 2 + origin.x) * 1.25f, (visibleSize.height / 2 + origin.y) * 1.75f));                                //  Создаём кнопку паузы и задаём ей параметры
+    button->setScale(0.55f);																														   ////
     
-    
+    button->setTag(1);
     auto &buttonpause = button;			// Создаём ссылку для лямбда функции
-    
-    
     button->addTouchEventListener([&, buttonpause](Ref* sender, cocos2d::ui::Widget::TouchEventType type)                //! Функционал кнопки паузы
                                   {
                                       switch (type)
                                       {
                                           case cocos2d::ui::Widget::TouchEventType::BEGAN:
-                                              log("Tap Start");
-                                              
-                                              menu->setEnabled(false);		// Выкчлючаем возможность есть мясо
                                               
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::MOVED:
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::ENDED:
-                                              men2->pause();
                                               
-                                              if (sfxOn)
+                                              PauseGame();
+                                              
+                                              
+                                              if (sfxSet)
                                               {
-                                                  cocos2d::experimental::AudioEngine::play2d("Tap.mp3", false, 1.0f);
+                                                  CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
                                               }
                                               
-                                              scoreLabel->setOpacity(0);
+                                              scoreLabel->setOpacity(0);        // Делаем счет невидимым
                                               
-                                              log("TAP ENDED BUTTON PAUSE");
-                                              MainGame::PauseGame();
-                                              MainGame::PauseMenuCreate();    //? Тут ошибка - создаю одно и тоже дохера раз похоже      - но так как функция локальная всё ок
+                                              //? Тут ошибка - создаю одно и тоже дохера раз похоже      - но так как функция локальная всё ок
                                               //? Игра должна ставить на паузу
-
                                               MainGame::removeChild(buttonpause, true);   // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
+                                              MainGame::BlurScreenSetUp();            // Размываем задний фон и ???????ставим игру на паузу
+                                              MainGame::PauseMenuCreate();      // Создаём меню паузы
+                                              
                                               break;
                                               
                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
@@ -194,64 +261,13 @@ void MainGame::PauseButtonCreate()        //! Создаём и добавляе
      MainGame::addChild(button, 12);		// Добавляем кнопку паузы на экран
 }
 
-void MainGame::CreditMenuCreate()
-{
-    auto visibleSize = Director::getInstance()->getVisibleSize();        //? Мб добавить их в хедер раз они везде юзаются????
-    Vec2 origin = Director::getInstance()->getVisibleOrigin();
-    
-    auto credit = cocos2d::ui::Button::create("t-1.png", "t-1.png", "t-1.png");  ////
-    credit->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));									  //  Создаём кнопку меню титров
-    credit->setScale(0.75);																															 ////
-    
-    
-    auto &creditlink = credit;			// Создаём ссылку для лямбда функции
-    
-    MainGame::addChild(credit, 6);		// Добавляем кнопку паузы на экран
-    
-    credit->addTouchEventListener([&, creditlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)                //! Функционал меню титров
-                                  {
-                                      switch (type)
-                                      {
-                                          case cocos2d::ui::Widget::TouchEventType::BEGAN:
-                                              log("Credit Tap Statred");
-                                              break;
-                                          case cocos2d::ui::Widget::TouchEventType::MOVED:
-                                              break;
-                                              
-                                          case cocos2d::ui::Widget::TouchEventType::ENDED:
-                                              log("Credit Tap Ended");
-                                              MainGame::removeChild(creditlink, true);   // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
-                                              MainGame::PauseMenuCreate();    //? Тут ошибка - создаю одно и тоже дохера раз похоже      - но так как функция локальная всё ок
-                                              //? Игра должна ставить на паузу
-                                              
-                                              break;
-                                              
-                                          case cocos2d::ui::Widget::TouchEventType::CANCELED:
-                                              break;
-                                              
-                                          default:
-                                              break;
-                                      }
-                                      
-                                  });
-    
-    
-    
-    
-}
-
-
 void MainGame::PauseMenuCreate()					//! Создание меню паузы
 {
-    auto visibleSize = Director::getInstance()->getVisibleSize();				//? Мб добавить их в хедер раз они везде юзаются????
-    Vec2 origin = Director::getInstance()->getVisibleOrigin();
-    
-    
     // Создаём все кнопки
     auto resume = cocos2d::ui::Button::create("GUI_button_play_orange.png", "GUI_button_play_orange-dark.png", "GUI_button_play_orange.png");
-    auto sfx = cocos2d::ui::CheckBox::create("SFXON.png",
-                                             "SFXTAP.png",
-                                             "SFXOFF.png",
+    auto sfx = cocos2d::ui::CheckBox::create("GUI_button_music_orange.png",
+                                             "GUI_button_music_orange-dark.png",
+                                             "GUI_button_music-off_orange.png",
                                              "GUI_button_play_orange.png",
                                              "GUI_button_play_orange.png");
     
@@ -261,11 +277,11 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     auto &resumelink = resume;
     
     // Устанавливаем позиции и размер
-    sfx->setPosition(Point(visibleSize.width / 2 + origin.x + 50, visibleSize.height / 2 + origin.y + 120));
-    sfx->setScale(1.00);
+    sfx->setPosition(Point((visibleSize.width / 2 + origin.x) * 1.25f, (visibleSize.height / 2 + origin.y) * 1.75f));
+    sfx->setScale(0.55);
     
     resume->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y ));
-    resume->setScale(0.75);
+    resume->setScale(0.55);
     
     // Добавляем на экран все кнопки
     this->addChild(sfx, 12);
@@ -278,21 +294,28 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
                                       switch (type)
                                       {
                                           case cocos2d::ui::Widget::TouchEventType::BEGAN:
-                                              log("TAP BEGAN BUTTON PLAY");
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::MOVED:
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::ENDED:
-                                              log("TAP ENDED BUTTON PLAY");
+                                              ResumeGame();
+                                              
                                               MainGame::removeChild(resumelink, true);
                                               MainGame::removeChild(sfxlink, true);
-                                           //   MainGame::removeChild(pausebg, true);           ОШИБКА БАГ ТЫ ПИДОР ПЕТЯ
-                                              //? Продолжить игру здесь надо
-                                              menu->setEnabled(true);						// Включаем возможность "есть" мясо
-                                              scoreLabel->setOpacity(255);
+                                              
+                                              if (sfxSet)
+                                              {
+                                                  CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
+                                              }
+                                              
+                                              if(meat->getScale() > 0.1)            // Эта проверка нужна на случай, если пауза была поставленна во время "финального" уменьшения мяса
+                                              {
+                                              meatmovement->setEnabled(true);						// Включаем возможность "есть" мясо
+                                              }
+                                              
+                                              scoreLabel->setOpacity(255);          // "Возвращаем" на экран счет
                                               PauseButtonCreate();					//  Создаём кнопку паузы
-                                              men2->resume();
-                                              MainGame::PauseGame();
+                                              MainGame::BlurScreenSetUp();          // Убираем размытие Гаусса
                                               break;
                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
                                               break;
@@ -304,35 +327,37 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     
     
     
-    
-    if (sfxOn == false)				///Графически настраиваем вид кнопки
+    if (sfxSet != true)				//Графически настраиваем вид кнопки ( вкл / выкл )
     {
         sfx->setSelected(true);
     }
     
-    sfx->addTouchEventListener([&, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type) //! Функционал регулятора музыки
+    sfx->addTouchEventListener([&, sfxlink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)  //! Функционал регулятора звука
                                {
                                    switch (type)
                                    {
                                        case ui::Widget::TouchEventType::BEGAN:
                                            break;
                                        case ui::Widget::TouchEventType::ENDED:
-                                           log("AUDIO CLICED");
-                                           
-                                           if (sfxOn)
+                                           if (sfxSet)
                                            {
-                                               sfxOn = false;
-                                               cocos2d::experimental::AudioEngine::pauseAll();					//? Тут чет все криво
-                                               log("SFX OFF");
-                                               
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
                                            }
+                                           if (sfxSet)
+                                           {
+                                               sfxSet = false;
+                                               def->setBoolForKey("SFX", sfxSet);
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->pauseBackgroundMusic();
+                                           }
+                                           
                                            else
                                            {
-                                               sfxOn = true;
-                                               cocos2d::experimental::AudioEngine::resumeAll();				//? Тут тоже не очень
-                                               log("SFX ONNN");
+                                               sfxSet = true;
+                                               def->setBoolForKey("SFX", sfxSet);
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->resumeBackgroundMusic();
                                            }
-                                           
+                                          
+                                           def->flush();  // Сохраняем изменения
                                            
                                            break;
                                        default:
@@ -343,120 +368,559 @@ void MainGame::PauseMenuCreate()					//! Создание меню паузы
     
 }
 
-void MainGame::PauseGame()   //? Размытие по Гауссу и пауза ( но мб это объеденю в одну функцию )
+void MainGame::BlurScreenSetUp()   //? Размытие по Гауссу и пауза ( но мб это объеденю в одну функцию )
 {
-    if (gameplaying)
-    {
-       // Director::getInstance()->pause();
-        gameplaying = false;
-        
-        auto visibleSize = Director::getInstance()->getVisibleSize();                                //! Для расстановки изображений
-        Vec2 origin = Director::getInstance()->getVisibleOrigin();
-
+    if (gamerunning)
+    {                                                                                                       //////!!! FATAL ERROR FATAL ERROR
+        gamerunning = false;
+        /*
         Size screenSize = Director::getInstance()->getWinSize();
         
-        float scale = 8.0f;
+        auto rendert = RenderTexture::create(screenSize.width, screenSize.height);
+        rendert->retain();
+        rendert->begin();
+        Director::getInstance()->getRunningScene()->visit();
+        rendert->end();
         
-         auto image = Sprite::create("bg.png");
-         image->retain();
-         image->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
-         
-         
-         TextureBlur::initShader(screenSize / 1.0f);
-         auto texture = TextureBlur::create(image->getTexture(), 1.1f, 1);
-         auto sprite = Sprite::createWithTexture(texture);
-         sprite->getTexture()->setAntiAliasTexParameters();
-         sprite->setPosition(Point(visibleSize.width / 2 + origin.x + 100, visibleSize.height / 2 + origin.y));
-         sprite->setScale(1.0f);
-         sprite->setFlippedY(false);
-         pausebg = sprite;
-         addChild(pausebg, 7);
- 
+        TextureBlur::initShader(screenSize / 1.0f);
+        auto texture = TextureBlur::create(rendert->getSprite()->getTexture() , 1.1f, 1);
+        auto bluredbg = Sprite::createWithTexture(texture);
+        bluredbg->getTexture()->setAntiAliasTexParameters();
+        bluredbg->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height / 2 + origin.y));
+        bluredbg->setScale(1.0f);
+        bluredbg->setFlippedY(true);
+        pausebg = bluredbg;
+        addChild(pausebg, 7);
+        */
     }
+    
     else
     {
-       // Director::getInstance()->resume();
-        gameplaying = true;
+       
+        gamerunning = true;
         removeChild(pausebg, true);
     }
   
 }
 
-void MainGame::Points(cocos2d::Ref *sender) //! Должен считать результат, уменьшать мясо, и проверять не проиграл ли игрок
+void MainGame::Points() //! Должен считать результат, уменьшать мясо, и проверять не проиграл ли игрок
 {
-    auto t = ScaleTo::create(0.5, meat->getScale() * 0.75);			// Анимация уменьшения мяса
+    auto meatscale = ScaleTo::create(0.5, meat->getScale() * 0.85);			// Анимация уменьшения мяса
+    auto meatdisappear = ScaleTo::create(0.2, 0.0f);                        // Анимация съедания мяса
+    auto delay = DelayTime::create(0.3f);                                   //
+    auto delay2 = DelayTime::create(0.5f);                                  // Паузы для сиквенций
     
-    if (men2->getSpriteFrame() != MenRed)		// Проверяет является ли текущий кадр, кадром при котором игрок проигрывает, если нет - добовляет очков
+    auto &plmovlink = platemovement;
+    
+    auto plateenability = CallFunc::create([plmovlink]()
+                                      {
+                                          plmovlink->setEnabled(true);
+                                          
+                                      });
+    
+    
+    if (man->getSpriteFrame() != MenRed)		// Проверяет является ли текущий кадр, кадром при котором игрок проигрывает, если нет - добовляет очков
     {
-        if (meat->getScale() > 0.2)
+        if (meat->getScale() > 0.4)
         {
-            meat->runAction(t);
+            meat->runAction(meatscale);
+           
         }
+        
         else
         {
-            meat->setScale(1.0);
+            meatmovement->setEnabled(false);
+            if(meat->isRunning())
+            {
+                meat->runAction(Sequence::create(delay, meatdisappear, NULL));
+                plate->runAction(Sequence::create(delay2, plateenability, NULL));
+            }
+            else
+            {
+                meat->runAction(meatdisappear);
+                plate->runAction(Sequence::create(delay, platemovement, NULL));
+            }
         }
-        score++;
         
-        __String *tempScore = __String::createWithFormat("%i", score);
-        
-        scoreLabel->setString(tempScore->getCString());
-        
+        if(meatmovement->isEnabled())
+        {
+        score++;        /// Увеличиваем кол-во очков на 1
+        __String *tempScore = __String::createWithFormat("%i", score);  // Обновляем счет
+        scoreLabel->setString(tempScore->getCString());     //???? ??
+        }
     }
     
-    else
+    else    //// Запускаем Game Over Screen
     {
+        if(meatmovement->isEnabled())
+        {
+        man->setTexture("gameover1.png");
+        CocosDenshion::SimpleAudioEngine::getInstance()->stopBackgroundMusic();      // Отключаем всю музыку
+        CocosDenshion::SimpleAudioEngine::getInstance()->stopAllEffects();           // Отключаем все SFX
+        BlurScreenSetUp();
+        PauseGame();
+        removeChildByTag(1, true);       // Удаляем с экрана кнопку паузы  ( только с экрана в пямити всё осталось )
+        scoreLabel->setOpacity(0);        // Делаем счет невидимым
+        GameOverScene();
+        }
         
-        auto scene = GameOver::createScene();
-        Director::getInstance()->replaceScene(TransitionFade::create(TRANSITION_TIME, scene));
     }
-  
+
 }
 
-void MainGame::MenWatch(float dt)  //! Должен генерировать поведение противника
+void MainGame::SpawnMeat()              // Добавляем "функционал" тарелки и спавним мясо
 {
-    Vector<SpriteFrame*> turningAnimation;
+    platemovement->setEnabled(false);       // Запрещаем взаимодействовать с тарелкой
     
-    MenRed = SpriteFrame::create("men2.png", Rect(0, 0, 100, 300));		// Положение мужика , когда он смотрит за игроком
+    auto RemovePlate = MoveTo::create(1.0f, Vec2(plate->getPositionX() * -1.25f, plate->getPositionY()));                                   // Анимация свайпа тарелки
+    auto SetLocationPlate = MoveTo::create(0.5f, Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.45f));     // Устанавливаем положение тарелки
+    auto SetLocationMeat = MoveTo::create(0.5f, Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.48f));      //  Устанавливаем положение мяса
     
-    turningAnimation.pushBack(SpriteFrame::create("men1.png", Rect(0, 0, 105, 300)));
-    turningAnimation.pushBack(SpriteFrame::create("menturned.png", Rect(0, 0, 105, 300)));
+    // Создаём ссылки для лямбдо функций
+    auto &meatS = meat;
+    auto &menuC = meatmovement;
+    
+    //Устанавливаем размер мяса
+    auto MeatScale = CallFunc::create([meatS]()
+                                      {
+                                            meatS->setScale(0.65f);
+                                      });
+    
+    auto MeatEnable = CallFunc::create([menuC]()
+                                      {
+                                          menuC->setEnabled(true);       // Разрешаем тапать на мясо
+                                      });
+    
+
+    plate->runAction(Sequence::create(RemovePlate, SetLocationPlate, nullptr));                                 //  Убираем тарелку за экран затем возращаем её с мясом
+    GenMeatTex();                                                                                               //  Генерируем текстуру
+    meat->runAction(Sequence::create(RemovePlate->clone(), MeatScale, SetLocationMeat, MeatEnable, nullptr));   //  "Убираем" мясо с экрана, затем устанавливаем ему размер, возвращаем с тарелкой и разрешаем взаимодействие с ним
+    
+}
+
+void MainGame::GenMeatTex()         // Генерируем текстуру мяса
+{
+    int z = random(0,4);
+    switch (z)
+    {
+        case 0:
+            meat->setTexture("meat.png");
+            break;
+        case 1:
+            meat->setTexture("meat2.png");
+            break;
+        case 2:
+            meat->setTexture("meat3.png");
+            break;
+        case 3:
+            meat->setTexture("meat4.png");
+            break;
+        case 4:
+            meat->setTexture("meat5.png");
+            break;
+    }
+    
+}
+
+void MainGame::GameOverScene()
+{
+    removeChildByTag(1,true);         // Удаляем с экрана кнопку паузы
+    
+    scoreLabel->setOpacity(0);        // Делаем счет невидимым
+    
+    bool IsRecord = false;
+    
+    auto highscore = def->getIntegerForKey("PLAYERS HIGHT SCORE", 0);
+    
+    if ( score > highscore )        // Проверяем не побит ли рекорд
+    {
+        highscore = score;          // Устанавливаем новый рекорд
+        
+        def->setIntegerForKey( "PLAYERS HIGHT SCORE", highscore );
+        IsRecord = true;            // Для отображения надписи "New Record!"
+    }
+    
+    def->flush();           // Сохраняем счет / рекорд
+    
+    
+    
+    __String *Score = __String::createWithFormat("Score %i", score);                                                                //  Создаём стринговые переменные для работы с labels
+    __String *HightScore = __String::createWithFormat("Best %i", highscore);                                                        //
+                                                                                                                                    //
+    auto bestscore = Label::createWithTTF(HightScore->getCString(), "fonts/Archive.otf", visibleSize.height * SCORE_FONT_SIZE);     //  Устанавливаем значения labels, шрифт, размер
+    auto currentscore = Label::createWithTTF(Score->getCString(), "fonts/Archive.otf", visibleSize.height * SCORE_FONT_SIZE);       //
+    
+    // Создаём ссылки для лямбдо функций
+    auto &currentscorelink = currentscore;
+    auto &bestscorelink = bestscore;
+    
+    // Устанавливаем цвет
+    currentscore->setColor(Color3B::BLACK);
+    bestscore->setColor(Color3B::BLACK);
+    
+    // Первоначальные настройки для анимации
+    currentscore->setOpacity(0);
+    bestscore->setOpacity(0);
+    
+    auto TapLabelFadeIn = FadeIn::create(1.5f);     // Анимация "перехода" из непрозрачного состояниея в прозрачное
+    
+    if(IsRecord)            // В случае если поставлен новый рекорд, добавляем на экран уведомление об этом
+    {
+        currentscore->setString("NEW RECORD!");
+    }
+
+    // Устанавливаем положение на экране
+    currentscore->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.75f + origin.y));
+    bestscore->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.65f + origin.y));
+    
+    // Запсукаем анимацию текста
+    bestscore->runAction(TapLabelFadeIn);
+    currentscore->runAction(TapLabelFadeIn->clone());
+    
+    // Добавляем на экран
+    this->addChild(currentscore,12);
+    this->addChild(bestscore,12);
+    
+    
+    
+    // Создаём все кнопки
+    auto restart = cocos2d::ui::Button::create("GUI_button_restart_orange.png", "GUI_button_restart_orange-dark.png", "GUI_button_restart_orange.png");
+    auto info = cocos2d::ui::Button::create("GUI_button_inform_orange.png", "GUI_button_inform_orange-dark.png", "GUI_button_inform_orange.png");
+    auto share = cocos2d::ui::Button::create("GUI_button_share_orange.png", "GUI_button_share_orange-dark.png", "GUI_button_share_orange.png");
+    auto sfx = cocos2d::ui::CheckBox::create("GUI_button_music_orange.png",
+                                             "GUI_button_music_orange-dark.png",
+                                             "GUI_button_music-off_orange.png",
+                                             "GUI_button_play_orange.png",
+                                             "GUI_button_play_orange.png");
+    
+    
+    
+    // Устанавливаем позиции и размер
+    sfx->setPosition(Point((visibleSize.width / 2 + origin.x) * 1.25f, (visibleSize.height / 2 + origin.y) * 1.75f));
+    sfx->setScale(0.55);
+    
+    restart->setPosition(Point(visibleSize.width / 2 + origin.x, (visibleSize.height / 2 + origin.y) * 0.45f ));
+    restart->setScale(0.55);
+    
+    info->setPosition(Point((visibleSize.width / 2 + origin.x) * 1.15f, visibleSize.height / 2 + origin.y));
+    info->setScale(0.55);
+    
+    share->setPosition(Point((visibleSize.width / 2 + origin.x) * 0.85f, visibleSize.height / 2 + origin.y));
+    share->setScale(0.55);
+    
+    //Создаём ссылки, для лямбдо функции
+    auto &sfxlink = sfx;
+    auto &restartlink = restart;
+    auto &sharelink = share;
+    auto &infolink = info;
+    
+    
+    // Добавляем на экран все кнопки
+    this->addChild(sfx, 12);
+    this->addChild(restart, 12);
+    this->addChild(info, 12);
+    this->addChild(share, 12);
+    
+    
+    restart->addTouchEventListener([&](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Перезагружаем игру, то есть начинаем сначала
+                                  {
+                                      switch (type)
+                                      {
+                                          case cocos2d::ui::Widget::TouchEventType::BEGAN:
+                                              break;
+                                          case cocos2d::ui::Widget::TouchEventType::MOVED:
+                                              break;
+                                          case cocos2d::ui::Widget::TouchEventType::ENDED:
+                                              if (sfxSet)                                           // Проверяем проигрывать ли звук нажатия кнопки
+                                              {
+                                                  CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
+                                              }
+                                              MainGame::RestartLevel();
+                                              
+                                              break;
+                                          case cocos2d::ui::Widget::TouchEventType::CANCELED:
+                                              break;
+                                          default:
+                                              break;
+                                      }
+                                      
+                                  });
+
+    info->addTouchEventListener([&,sfxlink, restartlink, sharelink, infolink, currentscorelink, bestscorelink](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Добавляем титры на экран
+                                   {
+                                       switch (type)
+                                       {
+                                           case cocos2d::ui::Widget::TouchEventType::BEGAN:
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::MOVED:
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::ENDED:
+                                               MainGame::removeChild(restartlink, true);            // Удаляем все графические элементы GameOverScreen
+                                               MainGame::removeChild(sfxlink, true);
+                                               MainGame::removeChild(sharelink, true);
+                                               MainGame::removeChild(infolink, true);
+                                               MainGame::removeChild(currentscorelink, true);
+                                               MainGame::removeChild(bestscorelink, true);
+                                               if (sfxSet)                                          // Проверяем проигрывать ли звук нажатия кнопки
+                                               {
+                                                   CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
+                                               }
+                                               MainGame::Info();    // Добавляем титры на экран
+                                               
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
+                                               break;
+                                           default:
+                                               break;
+                                       }
+                                       
+                                   });
+
+    
+    share->addTouchEventListener([&](Ref* sender, cocos2d::ui::Widget::TouchEventType type)		//! Функционал кнопки "поделиться"
+                                   {
+                                       switch (type)
+                                       {
+                                           case cocos2d::ui::Widget::TouchEventType::BEGAN:
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::MOVED:
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::ENDED:
+                                               if (sfxSet)                                      // Проверяем проигрывать ли звук нажатия кнопки
+                                               {
+                                                   CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
+                                               }
+                                               break;
+                                           case cocos2d::ui::Widget::TouchEventType::CANCELED:
+                                               break;
+                                           default:
+                                               break;
+                                       }
+                                       
+                                   });
+
+    
+    
+    
+    if (sfxSet != true)				///Графически настраиваем вид кнопки
+    {
+        sfx->setSelected(true);
+    }
+    
+    sfx->addTouchEventListener([&](Ref* sender, cocos2d::ui::Widget::TouchEventType type) //! Вкл. / Выкл. все аудио эффекты
+                               {
+                                   switch (type)
+                                   {
+                                       case ui::Widget::TouchEventType::BEGAN:
+                                           break;
+                                       case ui::Widget::TouchEventType::ENDED:
+                                           if (sfxSet)      // Проверяем проигрывать ли звук нажатия кнопки
+                                           {
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("Tap.mp3");
+                                           }
+                                           
+                                           if (sfxSet)      // Если музыка включена, то выключаем её, если нет, то наоборот
+                                           {
+                                               sfxSet = false;
+                                               def->setBoolForKey("SFX", sfxSet);
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->pauseBackgroundMusic();
+                                           }
+                                           
+                                           else
+                                           {
+                                               sfxSet = true;
+                                               def->setBoolForKey("SFX", sfxSet);
+                                               CocosDenshion::SimpleAudioEngine::getInstance()->resumeBackgroundMusic();
+                                           }
+                                           def->flush();
+                                           
+                                           break;
+                                       default:
+                                           break;
+                                   }
+                               });
+
+
+    
+}
+
+
+
+void MainGame::RestartLevel()       // Перезагружаем уровень
+{
+    auto scene = MainGame::createScene();
+    Director::getInstance()->replaceScene(TransitionFade::create(TRANSITION_TIME, scene));
+}
+
+
+void MainGame::Info()       // Убираем интерфейс GameOverScreen добавляем титры
+{
+    auto codelabel = Label::createWithTTF("Qwentum", "fonts/Archive.otf", visibleSize.height * 0.065f);
+    auto designlabel = Label::createWithTTF("Hannel", "fonts/Archive.otf", visibleSize.height * 0.065f);
+    auto enginelabel = Label::createWithTTF("Powered by cocos2d-x", "fonts/Archive.otf", visibleSize.height * 0.065f);
+    
+    codelabel->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.85f + origin.y));
+    designlabel->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.75f + origin.y));
+    enginelabel->setPosition(Point(visibleSize.width / 2 + origin.x, visibleSize.height * 0.65f + origin.y));
+    
+    
+    
+    this->addChild(codelabel, 12);
+    this->addChild(designlabel, 12);
+    this->addChild(enginelabel, 12);
+    
+    auto &t1 = codelabel;
+    auto &t2 = designlabel;
+    auto &t3 = enginelabel;
+    
+    contactListenerInfo = EventListenerTouchOneByOne::create();
+    contactListenerInfo->setSwallowTouches(true);
+    contactListenerInfo->setEnabled(true);
+    contactListenerInfo->onTouchBegan = [&,t1,t2,t3](Touch* touch, Event* event)        // Удаляем InfoScreen и возвращаем GameOverScreen ( нажатие может быть сделано в любой части экрана )
+    {
+        contactListenerInfo->setEnabled(false);
+        MainGame::removeChild(t1,true);
+        MainGame::removeChild(t2,true);
+        MainGame::removeChild(t3,true);
+        MainGame::GameOverScene();
+        return true;
+    };
+    Director::getInstance()->getEventDispatcher()->addEventListenerWithSceneGraphPriority(contactListenerInfo, this);
+    
+}
+
+void MainGame::SpwanCloud(float dt)         // Spawn облаков с генерированными параметрами: скорость, высота, размер, тип облака
+{
+    int   cloudspeed = random(20,40);
+    float cloudhight = random(1.65, 1.95);
+    float cloudsize = random(0.25f, 0.40f);
+    
+    auto cloud = Sprite::create("cloud1.png");
+    auto &cloudlink = cloud;
+    
+    int z = random(0,1);                // Генерация текстуры облака
+    switch (z)
+    {
+        case 0:
+            cloud->setTexture("cloud1.png");
+            break;
+        case 1:
+            cloud->setTexture("cloud2.png");
+            break;
+    }
+    
+    cloud->setScale(cloudsize);
+    cloud->setPosition(Point((visibleSize.width / 2 + origin.x) * 0.25f, (visibleSize.height / 2 + origin.y) * cloudhight ));
+    
+    auto cloudmovement = MoveBy::create(cloudspeed, Point( visibleSize.width * 1.8, 0 ));
+    auto DeleteCloud = CallFunc::create([&,cloudlink]()                         // Удаляем облако как только оно покидает игровую зону ( зону видимости )
+                                       {
+                                           cloudlink->removeChild(cloudlink, true);
+                                           log("CLOUD DELETED!");
+                                           ca -= 1;
+                                       });
+    
+    
+    
+    if(ca < 5)          // Проверяем кол-во существующих облаков, и регулируем их кол-во, что бы избежать перегрузки
+    {
+        cloud->runAction(Sequence::create(cloudmovement,DeleteCloud, NULL));
+    
+        clouds->addChild(cloud,1);
+        
+        log("CLOUD SPAWNED!");
+        
+        ca++;
+    }
+ 
+    cocos2d::log("  %d", ca);
+}
+
+
+void MainGame::pauseNodeAndDescendants(Node *pNode)         // Ставим на паузу Node и все дочерние объекты
+{
+    pNode->pause();
+    for(const auto &child : pNode->getChildren())
+    {
+        this->getActionManager()->pauseTarget(child);
+    }
+}
+
+void MainGame::resumeNodesAndDeccedants(Node *pNode)        // Снимаем паузу с Node и всех дочерних объектов 
+{
+    pNode->resume();
+    for(const auto &child : pNode->getChildren())
+    {
+        this->getActionManager()->resumeTarget(child);
+    }
+}
+
+void MainGame::PauseGame()          // Ставим на паузу все Node         ???  ManWatch + SpawnCloud
+{
+    pauseNodeAndDescendants(clouds);
+    smoke->pause();
+    man->pause();
+    plate->pause();
+    meat->pause();
+    meatmovement->setEnabled(false);		// Выкчлючаем возможность есть мясо
+}
+
+void MainGame::ResumeGame()         // Запускаем все Node
+{
+    resumeNodesAndDeccedants(clouds);
+    smoke->resume();
+    plate->resume();
+    meat->resume();
+    man->resume();
+}
+
+void MainGame::ManWatch(float dt)  //! Должен генерировать поведение противника
+{
+    MenRed = SpriteFrame::create("1.1.png", Rect(0, 0, 115, 300));		// Положение противника ,когда он смотрит за игроком
+    
+    Vector<SpriteFrame*> turningAnimation;          // Модель поведения 1
+    
+    turningAnimation.pushBack(SpriteFrame::create("1.4.png", Rect(0, 0, 115, 300)));
+    turningAnimation.pushBack(SpriteFrame::create("1.3.png", Rect(0, 0, 115, 300)));
     turningAnimation.pushBack(MenRed);
     Animation* animation = Animation::createWithSpriteFrames(turningAnimation, 1.5f);
     Animate* animateTurning = Animate::create(animation);
     
     
-    Vector<SpriteFrame*> fastTurning;
+    Vector<SpriteFrame*> fastTurning;               // Модель поведения 2
     
     fastTurning.pushBack(MenRed);
-    fastTurning.pushBack(SpriteFrame::create("menturned.png", Rect(0, 0, 105, 300)));
+    fastTurning.pushBack(SpriteFrame::create("1.2.png", Rect(0, 0, 115, 300)));
     Animation* animation2 = Animation::createWithSpriteFrames(fastTurning, 1.5f);
     Animate* animateFTurning = Animate::create(animation2);
     
     
-    Vector<SpriteFrame*> Relax;
-    Relax.pushBack(SpriteFrame::create("menturning.png", Rect(0, 0, 105, 300)));
-    Relax.pushBack(SpriteFrame::create("men1.png", Rect(0, 0, 105, 300)));
+    Vector<SpriteFrame*> Relax;                    // Модель поведения 3
+    
+    Relax.pushBack(SpriteFrame::create("1.4.png", Rect(0, 0, 115, 300)));
+    Relax.pushBack(SpriteFrame::create("1.3.png", Rect(0, 0, 115, 300)));
     Animation* animation3 = Animation::createWithSpriteFrames(Relax, 1.5f);
     Animate* animateRelax = Animate::create(animation3);
-    
-    int z = random(0,2);
+
+    int z = random(0,2);                            // Генерация выбора модели поведения
     switch (z)
     {
         case 0:
             log("Turning");
-            men2->runAction(animateTurning);
+            man->runAction(animateTurning);
             break;
         case 1:
-            men2->runAction(animateRelax);
+            man->runAction(animateRelax);
             log("Relax");
             break;
         case 2:
-            men2->runAction(animateFTurning);
+            man->runAction(animateFTurning);
             log("FTunring");
             break;
     }
     log("%i", z);
     
+    
 }
+
 
