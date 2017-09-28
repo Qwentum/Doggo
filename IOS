@@ -5,7 +5,6 @@
 #include "2d/CCRenderTexture.h"
 #include "TextureBlur.h"
 
-
 USING_NS_CC;
 
 
@@ -791,9 +790,12 @@ void MainGame::Info()       // Убираем интерфейс GameOverScreen 
 
 void MainGame::SpwanCloud(float dt)         // Spawn облаков с генерированными параметрами: скорость, высота, размер, тип облака
 {
-    int   cloudspeed = random(20,40);
-    float cloudhight = random(1.65, 1.95);
-    float cloudsize = random(0.25f, 0.40f);
+   if(!smoke->isPaused())                    // Проверяем ни стоил ли пауза ( в качестве индикатора используем дым )
+   {
+    
+    int   cloudspeed = random(30,50);
+    float cloudhight = random(1.60, 1.95);
+    float cloudsize = random(0.25f, 0.35f);
     
     auto cloud = Sprite::create("cloud1.png");
     auto &cloudlink = cloud;
@@ -815,25 +817,23 @@ void MainGame::SpwanCloud(float dt)         // Spawn облаков с гене�
     auto cloudmovement = MoveBy::create(cloudspeed, Point( visibleSize.width * 1.8, 0 ));
     auto DeleteCloud = CallFunc::create([&,cloudlink]()                         // Удаляем облако как только оно покидает игровую зону ( зону видимости )
                                        {
-                                           cloudlink->removeChild(cloudlink, true);
-                                           log("CLOUD DELETED!");
-                                           ca -= 1;
+                                           CCLOG("%zd", clouds->getChildren().size());
+                                           clouds->removeChild(cloudlink, true);
+                                           CCLOG("%zd", clouds->getChildren().size());
+                                           
                                        });
+       
     
     
-    
-    if(ca < 5)          // Проверяем кол-во существующих облаков, и регулируем их кол-во, что бы избежать перегрузки
+    if(clouds->getChildren().size() < 5)          // Проверяем кол-во существующих облаков, и регулируем их кол-во, что бы избежать перегрузки
     {
-        cloud->runAction(Sequence::create(cloudmovement,DeleteCloud, NULL));
-    
         clouds->addChild(cloud,1);
-        
-        log("CLOUD SPAWNED!");
-        
-        ca++;
+        cloud->runAction(Sequence::create(cloudmovement,DeleteCloud, NULL));
+        clouds->sortNodes(clouds->getChildren());
     }
  
-    cocos2d::log("  %d", ca);
+   }
+    
 }
 
 
@@ -922,5 +922,6 @@ void MainGame::ManWatch(float dt)  //! Должен генерировать п�
     
     
 }
+
 
 
